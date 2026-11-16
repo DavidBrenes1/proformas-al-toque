@@ -935,7 +935,7 @@ function layoutProforma(doc,p){
     ops.push({t:"img",src,x:align==="left"?bx:bx+(bw-w)/2,y:by,w,h}); return {w,h}; };
   const tw=(s,f,st,sz)=>{doc.setFont(f,st);doc.setFontSize(sz);return doc.getTextWidth(s);};
   const wrap=(s,f,st,sz,w)=>{doc.setFont(f,st);doc.setFontSize(sz);return doc.splitTextToSize(String(s),w);};
-  const pie=!!(e.pieImagen&&DIMS.get(e.pieImagen)); const bottom=pie?245:254;
+  const pie=!!(e.pieImagen&&DIMS.get(e.pieImagen)); const bottom=236;
   function newPage(){
     ops=[]; pages.push(ops);
     if(e.logo&&DIMS.get(e.logo)) fit(e.logo,15,8,50,42); else T(e.nombre,16,30,{font:"times",style:"bold",size:20});
