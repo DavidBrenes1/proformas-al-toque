@@ -249,6 +249,15 @@ select.pill{width:auto;min-height:40px;border-radius:999px;padding:0 34px 0 14px
 .login .err{background:var(--bad-soft);color:var(--bad);border-radius:var(--r2);padding:10px 12px;font-weight:500;font-size:14px}
 .who{border-top:1px solid var(--line);padding:12px 6px 4px;margin-top:8px;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px}
 .who span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* temporary-credentials notice */
+.temp{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:light-dark(#fff4c2,#3a3110);color:light-dark(#6b4e00,#f3d27a);border:1px solid light-dark(#f2d36b,#6b5a1d);border-radius:var(--r);padding:12px 14px;margin-bottom:18px;font-weight:500}
+.temp svg{width:22px;height:22px;flex:none}
+.temp span{flex:1 1 240px}
+.temp .btn{background:light-dark(#ffd84d,#f3d27a);border-color:transparent;color:#3d2c00;min-height:40px}
+.nav button .dot,.tabbar button .dot{width:9px;height:9px;border-radius:50%;background:#f0b400;box-shadow:0 0 0 2px var(--panel);margin-left:auto}
+.tabbar button{position:relative}.tabbar button .dot{position:absolute;top:6px;right:calc(50% - 16px);margin:0}
+.card.porcambiar{border-color:light-dark(#f2d36b,#6b5a1d);box-shadow:0 0 0 3px light-dark(#fff4c2,#3a3110)}
+.chip.porcambiar{background:light-dark(#fff4c2,#3a3110);color:light-dark(#6b4e00,#f3d27a)}
 /* profile */
 .prof-head{display:flex;align-items:center;gap:18px;margin-bottom:22px;flex-wrap:wrap}
 .prof-head .av{width:64px;height:64px;font-size:22px}
@@ -525,6 +534,7 @@ const ICONS={
   proformas:'<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h4"/>',
   inventario:'<path d="M3 8l9-5 9 5-9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
   clientes:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.4 3.4-5.5 6.5-5.5s5.7 2.1 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 010 7M18.5 14.8c1.6.9 2.6 2.7 3 5.2"/>',
+  warn:'<path d="M12 3l9.5 17h-19z"/><path d="M12 10v4.5M12 17.5v.5"/>',
   perfil:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.4 4.2-7 8-7s7 2.6 8 7"/>',
   eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   empresa:'<path d="M4 21V6l8-3v18"/><path d="M12 9h8v12"/><path d="M7 9h2M7 13h2M7 17h2M15 13h2M15 17h2"/>',
@@ -542,7 +552,7 @@ function refresh(){ if(S.editing && D) drawEditor(); else render(); }
 
 /* ---------- navigation ---------- */
 function drawNav(){
-  const html=TABS.map(([k,l])=>`<button data-tab="${k}" ${S.tab===k&&!S.editing?'aria-current="page"':""}>${icon(k)}<span>${l}</span></button>`).join("");
+  const html=TABS.map(([k,l])=>`<button data-tab="${k}" ${S.tab===k&&!S.editing?'aria-current="page"':""}>${icon(k)}<span>${l}</span>${k==="perfil"&&pendiente()?'<span class="dot" aria-label="Pendiente"></span>':""}</button>`).join("");
   $("#nav").innerHTML=html; $("#tabbar").innerHTML=html;
   document.querySelectorAll("#nav [data-tab],#tabbar [data-tab]").forEach(b=>b.onclick=()=>{ if(S.editing) closeEditor(); go(b.dataset.tab); });
 }
@@ -554,7 +564,7 @@ function render(){
   const banner = !S.db ? `<div class="banner">Cargando tus datos…</div>`
     : S.offline ? `<div class="banner">Todavía no se pudo conectar con la base de datos. Lo que ves puede no estar actualizado.</div>` : "";
   const v={inicio:vInicio,proformas:vProformas,inventario:vInventario,clientes:vClientes,empresa:vEmpresa,perfil:vPerfil}[S.tab]||vInicio;
-  $("#app").innerHTML=`<div class="view">${banner}${v()}</div>`;
+  $("#app").innerHTML=`<div class="view">${banner}${S.tab!=="perfil"?avisoTemporal():""}${v()}</div>`;
   bind[S.tab]&&bind[S.tab]();
   document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>go(b.dataset.go));
 }
@@ -716,24 +726,30 @@ bind.clientes=()=>{
 
 /* ---------- Perfil ---------- */
 S.perfil=null;
-async function loadPerfil(){ const {data}=await SB.rpc("mi_perfil"); S.perfil=(data&&data[0])||{email:S.user&&S.user.email,nombre:""}; if(!S.editing) render(); }
+const pendiente=()=>!!(S.perfil&&(S.perfil.correo_temporal||S.perfil.clave_temporal));
+function avisoTemporal(){
+  if(!pendiente()) return "";
+  const p=S.perfil, que=p.correo_temporal&&p.clave_temporal?"un correo y una contraseña temporales":p.correo_temporal?"un correo temporal":"una contraseña temporal";
+  return `<div class="temp" role="alert">${icon("warn")}<span>Tu cuenta todavía usa ${que}. Cambiá${p.correo_temporal&&p.clave_temporal?"los":p.correo_temporal?"lo":"la"} para que nadie más pueda entrar.</span><button class="btn sm" data-go="perfil">Cambiar ahora</button></div>`;
+}
+async function loadPerfil(){ const {data}=await SB.rpc("mi_perfil"); S.perfil=(data&&data[0])||{email:S.user&&S.user.email,nombre:""}; if(!S.editing) render(); else drawNav(); }
 const pwField=(id,label,ac)=>`<label class="f"><span>${label}</span><span class="pw"><input id="${id}" type="password" autocomplete="${ac}"><button type="button" data-eye="${id}" aria-label="Mostrar contraseña" aria-pressed="false">${icon("eye")}</button></span></label>`;
 function vPerfil(){
   const p=S.perfil||{email:S.user?S.user.email:"",nombre:""};
-  return `<div class="prof-head"><span class="av">${esc(initials(p.nombre||p.email))}</span>
+  return `${pendiente()?`<div class="temp" role="alert">${icon("warn")}<span>${p.correo_temporal?"Cambiá el correo temporal por tu correo real y elegí":"Elegí"} una contraseña propia. Los recuadros en amarillo son los que faltan.</span></div>`:""}<div class="prof-head"><span class="av">${esc(initials(p.nombre||p.email))}</span>
     <div><h1>${esc(p.nombre||"Mi perfil")}</h1><p class="muted">${esc(p.email||"")} · ${esc(E().nombre||"")}</p></div></div>
   <div class="prof">
    <section class="card pad"><h2>Nombre</h2><p class="muted">Así te saluda la app al entrar.</p>
      <form id="fNombre" novalidate><label class="f"><span>Tu nombre</span><input id="pfNombre" value="${esc(p.nombre||"")}" autocomplete="name" maxlength="80"></label>
      <div><button class="btn primary" type="submit">Guardar nombre</button></div></form></section>
-   <section class="card pad"><h2>Correo para entrar</h2><p class="muted">Con este correo entrás a la app. No hace falta que reciba mensajes.</p>
+   <section class="card pad ${p.correo_temporal?"porcambiar":""}"><div class="row" style="justify-content:space-between"><h2>Correo para entrar</h2>${p.correo_temporal?'<span class="chip porcambiar">Pendiente</span>':""}</div><p class="muted">Con este correo entrás a la app. No hace falta que reciba mensajes.</p>
      <form id="fCorreo" novalidate>
        <label class="f"><span>Correo actual</span><input value="${esc(p.email||"")}" disabled></label>
        <label class="f"><span>Correo nuevo</span><input id="pfCorreo" type="email" autocomplete="email" inputmode="email"></label>
        ${pwField("pfCorreoClave","Tu contraseña actual","current-password")}
        <div class="ferr" id="eCorreo" hidden></div>
        <div><button class="btn primary" type="submit">Cambiar correo</button></div></form></section>
-   <section class="card pad"><h2>Contraseña</h2><p class="muted">Usá al menos 8 caracteres. Mejor si mezcla letras, números y algún símbolo.</p>
+   <section class="card pad ${p.clave_temporal?"porcambiar":""}"><div class="row" style="justify-content:space-between"><h2>Contraseña</h2>${p.clave_temporal?'<span class="chip porcambiar">Pendiente</span>':""}</div><p class="muted">Usá al menos 8 caracteres. Mejor si mezcla letras, números y algún símbolo.</p>
      <form id="fClave" novalidate>
        ${pwField("pfActual","Contraseña actual","current-password")}
        ${pwField("pfNueva","Contraseña nueva","new-password")}
@@ -774,7 +790,7 @@ bind.perfil=()=>{
     if(n===a){ showErr("eClave","La contraseña nueva tiene que ser distinta de la actual."); return; }
     busy(f,true); const {error}=await SB.rpc("cambiar_mi_clave",{actual:a,nueva:n}); busy(f,false);
     if(error){ showErr("eClave",rpcErr(error)); return; }
-    f.reset(); nueva.oninput(); toast("Contraseña cambiada"); };
+    f.reset(); toast("Contraseña cambiada"); await loadPerfil(); };
   $("#pfSalir").onclick=()=>SB.auth.signOut();
 };
 
