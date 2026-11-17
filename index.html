@@ -331,7 +331,7 @@ const FONTS={"cb": "AAEAAAAOAIAAAwBgR0RFRg3bDiQAAGpEAAAApkdQT1MpLJ9bAABq7AAAQERH
 (function(){ const st=document.createElement("style"); st.textContent=`@font-face{font-family:CarlitoE;font-weight:700;src:url(data:font/ttf;base64,${FONTS.cb}) format("truetype")}@font-face{font-family:CarlitoE;font-weight:400;src:url(data:font/ttf;base64,${FONTS.cr}) format("truetype")}@font-face{font-family:CaladeaE;font-weight:400;src:url(data:font/ttf;base64,${FONTS.kr}) format("truetype")}@font-face{font-family:CaladeaE;font-weight:700;src:url(data:font/ttf;base64,${FONTS.kb}) format("truetype")}`; document.head.appendChild(st); })();
 const DEF_EMPRESA = {
   nombre:"Tu Empresa", razon:"", cedula:"", telefonos:"", correo:"", direccion:"", logo:"",
-  numeroInicial:1001, validezDias:15, ivaPct:13, minutosAntes:40,
+  numeroInicial:1001, validezDias:15, ivaPct:13, minutosAntes:40, gananciaExterna:20,
   condiciones:"Precio de la oferta válido por {dias} días, precios sujetos a cambio sin previo aviso y ajustados en el momento de la compra\nCondiciones generales\nPRECIO EN OFERTA POR MEDIO DE TRANSFERENCIA, EFECTIVO O CHEQUE BANCARIO\nTiempo de entrega de 15 a 22 días hábiles, consultar disponibilidad\nTodo equipo cuenta con un año de garantía por defectos de fábrica\nImágenes con fines ilustrativos\nForma de pago 50% para iniciar fabricación y 50% antes de entregar el equipo",
   banco:"", pie:"", formaPago:"En efectivo, transferencia o cheque", pieImagen:"", cierreImagen:"", colorBanda:"#3b65a8"
 };
@@ -414,33 +414,71 @@ function openDialog(html,onSave,onReady){
   dform.querySelectorAll('[value="cancel"]').forEach(b=>b.onclick=ev=>{ev.preventDefault();dlg.close()});
   onReady&&onReady(); dlg.showModal();
 }
-function editEquipo(e){
-  const isNew=!e; e=e||{nombre:"",categoria:"",descripcion:"",precio:0,stock:null,foto:""};
+function editEquipo(e,opts={}){
+  const isNew=!e; e=e||{nombre:"",categoria:opts.externo?"Utensilios y vajilla":"",descripcion:"",precio:0,stock:null,foto:"",origen:opts.externo?"externo":"propio",tienda:"TIPS",ganancia:E().gananciaExterna};
   let foto=e.foto||"";
-  openDialog(`<div class="dh"><div class="label">Inventario</div><h2>${isNew?"Agregar equipo":"Editar equipo"}</h2></div>
+  const ext=esExterno(e);
+  const catOpts=[...CATEGORIAS,...(e.categoria&&!CATEGORIAS.includes(e.categoria)?[e.categoria]:[])];
+  openDialog(`<div class="dh"><div class="label">Inventario</div><h2>${isNew?(ext?"Producto de otra tienda":"Agregar equipo"):"Editar"}</h2></div>
   <div class="db">
-    <label class="f"><span>Nombre</span><input id="eqNombre" name="nombre" required value="${esc(e.nombre)}" placeholder="Cámara de refrigeración de una puerta"></label>
-    <div class="grid3">
-      <label class="f"><span>Categoría</span><input id="eqCat" name="categoria" list="catList" value="${esc(e.categoria)}" placeholder="Refrigeración"></label>
-      <label class="f"><span>Precio (¢)</span><input id="eqPrecio" name="precio" type="number" min="0" step="1000" value="${esc(e.precio)}"></label>
-      <label class="f"><span>Stock</span><input id="eqStock" name="stock" type="number" min="0" value="${e.stock??""}" placeholder="Bajo pedido"></label>
+    <div class="seg" role="radiogroup" aria-label="Origen">
+      <label><input type="radio" name="origen" value="propio" ${ext?"":"checked"}>Lo fabricamos</label>
+      <label><input type="radio" name="origen" value="externo" ${ext?"checked":""}>Se compra en otra tienda</label></div>
+    <label class="f"><span>Nombre</span><input id="eqNombre" name="nombre" required value="${esc(e.nombre)}" placeholder="${ext?"Televisor Samsung 40 pulgadas UN40T5290":"Mesa de trabajo de 5 niveles"}"></label>
+    <label class="f"><span>Categoría</span><select id="eqCat" name="categoria">${catOpts.map(c=>`<option ${c===(e.categoria||"Otros")?"selected":""}>${esc(c)}</option>`).join("")}</select></label>
+    <div id="extBox" class="stack" ${ext?"":"hidden"}>
+      <div class="grid2">
+        <label class="f"><span>Tienda donde se compra</span><select id="eqTienda" name="tienda">${TIENDAS.map(t=>`<option ${t===(e.tienda||"TIPS")?"selected":""}>${t}</option>`).join("")}</select></label>
+        <label class="f" id="eqOtraBox" ${e.tienda==="Otra"?"":"hidden"}><span>¿Cuál tienda?</span><input id="eqTiendaOtra" name="tiendaOtra" value="${esc(e.tiendaOtra||"")}"></label>
+      </div>
+      <label class="f"><span>Enlace del producto (opcional)</span><input id="eqEnlace" name="enlace" type="url" inputmode="url" value="${esc(e.enlace||"")}" placeholder="https://tipscr.com/…"></label>
+      <div class="grid3">
+        <label class="f"><span>Costo en la tienda (¢)</span><input id="eqCosto" name="costo" type="number" min="0" step="any" inputmode="numeric" value="${esc(e.costo??"")}"></label>
+        <label class="f"><span>Ganancia (%)</span><input id="eqGan" name="ganancia" type="number" min="0" step="any" inputmode="numeric" value="${esc(e.ganancia??E().gananciaExterna)}"></label>
+        <div class="f"><span class="label">Precio para el cliente</span><div id="eqPV" style="font-size:20px;font-weight:700;padding-top:8px"></div></div>
+      </div>
+      <label class="row" style="gap:8px;font-size:14px"><input id="eqRev" type="checkbox" style="width:auto;min-height:0" ${isNew||precioViejo(e)?"checked":""}> Revisé este precio hoy${e.precioRevisado?` <span class="muted">(última vez: ${fdate(e.precioRevisado)})</span>`:""}</label>
+      <p class="muted" style="font-size:13.5px">El costo, la ganancia y la tienda son internos: no salen en el PDF del cliente.</p>
     </div>
-    <datalist id="catList">${cats().map(c=>`<option value="${esc(c)}">`).join("")}</datalist>
-    <label class="f"><span>Descripción que va en la proforma</span><textarea id="eqDesc" name="descripcion" rows="7">${esc(e.descripcion)}</textarea></label>
+    <div id="propBox" class="grid2" ${ext?"hidden":""}>
+      <label class="f"><span>Precio (¢)</span><input id="eqPrecio" name="precio" type="number" min="0" step="any" inputmode="numeric" value="${esc(e.precio)}"></label>
+      <label class="f"><span>Stock</span><input id="eqStock" name="stock" type="number" min="0" inputmode="numeric" value="${e.stock??""}" placeholder="Bajo pedido"></label>
+    </div>
+    <label class="f"><span id="eqDescLbl">${ext?"Características (van en la proforma)":"Descripción que va en la proforma"}</span><textarea id="eqDesc" name="descripcion" rows="7" placeholder="${ext?"Pantalla de 40 pulgadas Full HD, Smart TV, 2 puertos HDMI, 1 USB, Wi-Fi…":""}">${esc(e.descripcion)}</textarea></label>
     <div class="photo-in"><div class="pv" id="eqPv">${foto?`<img src="${esc(foto)}" alt="">`:"Sin foto"}</div>
-      <div class="stack" style="gap:6px"><label class="btn sm" for="eqFoto">Subir foto</label><input id="eqFoto" type="file" accept="image/*" hidden>
+      <div class="row"><label class="btn sm" for="eqFoto">Subir foto</label><input id="eqFoto" type="file" accept="image/*" hidden>
       <button class="btn sm ghost" id="eqQuitar" type="button">Quitar foto</button></div></div>
   </div>
   <div class="df">${isNew?"":`<button class="btn danger left" id="eqDel" type="button">Borrar</button>`}<button class="btn" value="cancel">Cancelar</button><button class="btn primary" value="ok">Guardar</button></div>`,
   async fd=>{
-    const st=fd.get("stock");
-    const data={...(e.prueba?{prueba:true}:{}),nombre:fd.get("nombre").trim(),categoria:fd.get("categoria").trim(),descripcion:fd.get("descripcion").trim(),precio:+fd.get("precio")||0,stock:st===""?null:+st,foto,actualizado:today()};
-    await put("equipos",isNew?uid("e"):e.id,data); toast(isNew?"Equipo agregado":"Equipo guardado"); if(S.editing&&D){drawCatalog();drawLines();} else render();
+    const nombre=(fd.get("nombre")||"").trim(); if(!nombre){ toast("Poné un nombre."); throw new Error("nombre"); }
+    const externo=fd.get("origen")==="externo";
+    const base={...(e.prueba?{prueba:true}:{}),nombre,categoria:fd.get("categoria")||"Otros",descripcion:(fd.get("descripcion")||"").trim(),foto,actualizado:today(),origen:externo?"externo":"propio"};
+    let data;
+    if(externo){
+      const costo=+fd.get("costo")||0, gan=fd.get("ganancia")===""?(+E().gananciaExterna||0):+fd.get("ganancia");
+      if(!costo){ toast("Escribí el costo en la tienda."); throw new Error("costo"); }
+      const rev=$("#eqRev").checked||isNew||+e.costo!==costo;
+      data={...base,tienda:fd.get("tienda")||"TIPS",tiendaOtra:(fd.get("tiendaOtra")||"").trim(),enlace:(fd.get("enlace")||"").trim(),costo,ganancia:gan,precio:precioVenta(costo,gan),precioRevisado:rev?today():(e.precioRevisado||""),stock:null};
+    } else {
+      const st=fd.get("stock");
+      data={...base,precio:+fd.get("precio")||0,stock:st===""||st===null?null:+st};
+    }
+    const id=isNew?uid("e"):e.id;
+    await put("equipos",id,data); toast(isNew?"Guardado en el inventario":"Cambios guardados");
+    if(opts.alGuardar) opts.alGuardar(id); else if(S.editing&&D){drawCatalog();drawLines();updateLive();} else render();
   },
   ()=>{
+    const sync=()=>{ const ex=document.querySelector('input[name=origen]:checked').value==="externo";
+      $("#extBox").hidden=!ex; $("#propBox").hidden=ex; $("#eqDescLbl").textContent=ex?"Características (van en la proforma)":"Descripción que va en la proforma";
+      $("#eqPV").textContent=money(precioVenta($("#eqCosto").value,$("#eqGan").value)); };
+    document.querySelectorAll("input[name=origen]").forEach(r=>r.onchange=sync);
+    ["#eqCosto","#eqGan"].forEach(k=>$(k).oninput=sync);
+    $("#eqTienda").onchange=()=>{ $("#eqOtraBox").hidden=$("#eqTienda").value!=="Otra"; };
+    sync();
     $("#eqFoto").onchange=async ev=>{const f=ev.target.files[0]; if(!f) return; try{foto=await readImage(f); $("#eqPv").innerHTML=`<img src="${foto}" alt="">`;}catch(_){toast("No se pudo leer esa imagen. Probá con un JPG o PNG.")}};
     $("#eqQuitar").onclick=()=>{foto="";$("#eqPv").textContent="Sin foto"};
-    const d=$("#eqDel"); d&&armDelete(d,async()=>{await del("equipos",e.id);dlg.close();toast("Equipo borrado");refresh()});
+    const d=$("#eqDel"); d&&armDelete(d,async()=>{await del("equipos",e.id);dlg.close();toast("Borrado del inventario");refresh()});
   });
 }
 
@@ -482,7 +520,8 @@ function vEmpresa(){
     <div class="grid2">
       <label class="f"><span>Número de la próxima proforma</span><input id="emNum" name="numeroInicial" type="number" min="1" value="${esc(nextNumero())}"></label>
       <label class="f"><span>Validez (días)</span><input id="emVal" name="validezDias" type="number" min="1" value="${esc(e.validezDias)}"></label>
-      <label class="f"><span>IVA (%)</span><input id="emIva" name="ivaPct" type="number" min="0" step="0.5" value="${esc(e.ivaPct)}"></label>
+      <label class="f"><span>IVA (%)</span><input id="emIva" name="ivaPct" type="number" min="0" step="any" value="${esc(e.ivaPct)}"></label>
+      <label class="f"><span>Ganancia sobre productos de otras tiendas (%)</span><input id="emGan" name="gananciaExterna" type="number" min="0" step="any" value="${esc(e.gananciaExterna)}"></label>
       <label class="f"><span>Minutos que tomaba antes, a mano</span><input id="emAntes" name="minutosAntes" type="number" min="1" value="${esc(e.minutosAntes)}"></label>
     </div>
     <label class="f"><span>Condiciones generales ({dias} se cambia por los días de validez)</span><textarea id="emCond" name="condiciones" rows="6">${esc(e.condiciones)}</textarea></label>
@@ -521,6 +560,7 @@ bind.empresa=()=>{
   $("#empForm").onsubmit=async ev=>{ev.preventDefault(); const fd=new FormData(ev.target); const d={...E(),logo,pieImagen:pie,cierreImagen:cierre};
     ["nombre","razon","cedula","telefonos","correo","direccion","condiciones","banco","pie","formaPago","colorBanda"].forEach(k=>d[k]=(fd.get(k)||"").trim());
     ["validezDias","ivaPct","minutosAntes"].forEach(k=>d[k]=+fd.get(k)||DEF_EMPRESA[k]);
+    d.gananciaExterna=fd.get("gananciaExterna")===""?DEF_EMPRESA.gananciaExterna:+fd.get("gananciaExterna");
     const want=+fd.get("numeroInicial")||1; const maxUsed=Math.max(0,...S.proformas.map(p=>+p.numero||0));
     if(want<=maxUsed){ toast(`El número ya se usó. Tiene que ser mayor que ${maxUsed}.`); return; }
     d.numeroInicial=want;
@@ -671,33 +711,58 @@ bind.proformas=()=>{
 
 /* ---------- Inventario ---------- */
 S.invQ=""; S.invCat="";
-const cats = () => [...new Set(S.equipos.map(e=>e.categoria).filter(Boolean))].sort();
+const CATEGORIAS=["Refrigeración","Congelación","Cámaras de refrigeración","Mesas frías","Mesas de trabajo","Estaciones bar","Fregaderos","Cocinas industriales","Freidoras","Hornos de convección","Hornos pizzeros","Hornos pequeños","Refresqueras","Urnas calientes y frías","Baños María","Baños María fríos","Campanas y extracción","Utensilios y vajilla","Electrónica e importados","Otros"];
+const TIENDAS=["TIPS","Monge","Otra"];
+const catOrder=c=>{ const i=CATEGORIAS.indexOf(c); return i<0?CATEGORIAS.length:i; };
+const catDe=e=>e.categoria||"Otros";
+const cats=()=>[...new Set(S.equipos.map(catDe))].sort((a,b)=>catOrder(a)-catOrder(b)||a.localeCompare(b));
+const esExterno=e=>!!e&&e.origen==="externo";
+const diasDesde=f=>f?Math.max(0,Math.floor((Date.now()-new Date(f+"T12:00:00").getTime())/864e5)):999;
+const precioViejo=e=>esExterno(e)&&diasDesde(e.precioRevisado)>15;
+const precioVenta=(costo,g)=>Math.ceil((+costo||0)*(1+(+g||0)/100)/100)*100;
+const tiendaDe=e=>e.tienda==="Otra"?(e.tiendaOtra||"Otra tienda"):(e.tienda||"Otra tienda");
+const sortEq=(a,b)=>catOrder(catDe(a))-catOrder(catDe(b))||catDe(a).localeCompare(catDe(b))||(a.nombre||"").localeCompare(b.nombre||"");
+const matchEq=(e,q)=>!q||(e.nombre+" "+catDe(e)+" "+(e.descripcion||"")+" "+(e.tienda||"")+" "+(e.tiendaOtra||"")).toLowerCase().includes(q);
+const matchOrigen=(e,o)=>!o||(o==="externo"?esExterno(e):!esExterno(e));
+function extChips(e){ if(!esExterno(e)) return "";
+  const d=diasDesde(e.precioRevisado);
+  return `<span class="chip enviada">${esc(tiendaDe(e))}</span>${d>15?`<span class="chip ex">Precio de hace ${d>900?"mucho":d+" días"}</span>`:""}`; }
 function stockChip(e){
   if(e.stock===null||e.stock===undefined||e.stock==="") return `<span class="chip plain">Bajo pedido</span>`;
   const n=+e.stock; return `<span class="chip ${n<=1?"ex":"aceptada"}">${n} en stock</span>`;
 }
+S.invOrigen="";
+function eqCard(e){ return `<button class="card ecard" data-eq="${esc(e.id)}">
+      <div class="ph">${e.foto?`<img src="${esc(e.foto)}" alt="">`:"Sin foto"}</div>
+      <div class="bd"><span class="nm">${esc(e.nombre)}</span>${e.prueba?`<span class="cat">prueba</span>`:""}
+      <div class="ft"><span class="pr">${money(e.precio)}</span><span class="row" style="gap:6px">${esExterno(e)?extChips(e):stockChip(e)}</span></div></div></button>`; }
 function vInventario(){
-  return `<div class="page-h"><div><h1>Inventario</h1><p class="muted">Los equipos que se cotizan, con su foto, descripción y precio.</p></div>
-    <button class="btn primary" id="nuevoEq">${icon("plus")}Agregar equipo</button></div>
-  <div class="toolbar"><div class="search">${icon("search")}<input id="invQ" type="search" placeholder="Buscar equipo o medida" value="${esc(S.invQ)}" autocomplete="off" aria-label="Buscar"></div>
-    <div class="chips" id="invCats"></div></div>
+  const viejos=S.equipos.filter(precioViejo).length;
+  return `<div class="page-h"><div><h1>Inventario</h1><p class="muted">Lo que fabrican y lo que compran en otras tiendas, ordenado por categoría.</p></div>
+    <div class="row"><button class="btn" id="nuevoExt">${icon("plus")}Producto de otra tienda</button><button class="btn primary" id="nuevoEq">${icon("plus")}Agregar equipo</button></div></div>
+  ${viejos?`<div class="temp" role="status">${icon("warn")}<span>${plural(viejos,"producto de otra tienda tiene","productos de otras tiendas tienen")} el precio sin revisar hace más de 15 días.</span><button class="btn sm" id="verViejos">Ver cuáles</button></div>`:""}
+  <div class="toolbar"><div class="search">${icon("search")}<input id="invQ" type="search" placeholder="Buscar equipo, medida o tienda" value="${esc(S.invQ)}" autocomplete="off" aria-label="Buscar"></div>
+    <div class="chips" role="group" aria-label="Origen">${[["","Todo"],["propio","Lo que fabricamos"],["externo","De otras tiendas"]].map(([k,l])=>`<button data-o="${k}" aria-pressed="${S.invOrigen===k}">${l}</button>`).join("")}</div>
+    <select id="invCat" style="width:auto;min-width:200px" aria-label="Categoría"><option value="">Todas las categorías</option></select></div>
   <div id="invGrid"></div>`;
 }
 bind.inventario=()=>{
+  let soloViejos=false;
   const draw=()=>{
-    $("#invCats").innerHTML=[["","Todos"],...cats().map(c=>[c,c])].map(([k,l])=>`<button data-c="${esc(k)}" aria-pressed="${S.invCat===k}">${esc(l)}</button>`).join("");
-    $("#invCats").querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{S.invCat=b.dataset.c; draw();});
-    const q=S.invQ.toLowerCase();
-    const items=S.equipos.filter(e=>(!S.invCat||e.categoria===S.invCat)&&(!q||(e.nombre+" "+e.categoria+" "+e.descripcion).toLowerCase().includes(q))).sort((a,b)=>(a.categoria||"").localeCompare(b.categoria||"")||(a.nombre||"").localeCompare(b.nombre||""));
-    $("#invGrid").innerHTML=items.length?`<div class="cards">${items.map(e=>`<button class="card ecard" data-eq="${esc(e.id)}">
-      <div class="ph">${e.foto?`<img src="${esc(e.foto)}" alt="">`:"Sin foto"}</div>
-      <div class="bd"><span class="cat">${esc(e.categoria||"Sin categoría")}${e.prueba?" · prueba":""}</span><span class="nm">${esc(e.nombre)}</span>
-      <div class="ft"><span class="pr">${money(e.precio)}</span>${stockChip(e)}</div></div></button>`).join("")}</div>`
-      :`<div class="card empty"><b>${S.equipos.length?"Nada coincide":"El inventario está vacío"}</b>${S.equipos.length?"Probá con otra palabra o categoría.":"Agregá los equipos que más cotizás."}</div>`;
+    const sel=$("#invCat"); sel.innerHTML=`<option value="">Todas las categorías</option>`+cats().map(c=>`<option ${c===S.invCat?"selected":""}>${esc(c)}</option>`).join("");
+    const q=S.invQ.toLowerCase().trim();
+    const items=S.equipos.filter(e=>(!S.invCat||catDe(e)===S.invCat)&&matchOrigen(e,S.invOrigen)&&matchEq(e,q)&&(!soloViejos||precioViejo(e))).sort(sortEq);
+    const groups=[]; items.forEach(e=>{ const c=catDe(e); let g=groups.find(x=>x.c===c); if(!g){g={c,items:[]};groups.push(g);} g.items.push(e); });
+    $("#invGrid").innerHTML=items.length?groups.map(g=>`<section style="margin-bottom:26px"><div class="card-h" style="margin-bottom:12px"><h2>${esc(g.c)} <span class="muted" style="font-weight:500">· ${g.items.length}</span></h2></div><div class="cards">${g.items.map(eqCard).join("")}</div></section>`).join("")
+      :`<div class="card empty"><b>${S.equipos.length?"Nada coincide":"El inventario está vacío"}</b>${S.equipos.length?"Probá con otra palabra, categoría u origen.":"Agregá los equipos que más cotizan."}</div>`;
     document.querySelectorAll("[data-eq]").forEach(b=>b.onclick=()=>editEquipo(S.equipos.find(e=>e.id===b.dataset.eq)));
   };
   $("#nuevoEq").onclick=()=>editEquipo(null);
+  $("#nuevoExt").onclick=()=>editEquipo(null,{externo:true});
+  const vv=$("#verViejos"); vv&&(vv.onclick=()=>{ soloViejos=true; S.invOrigen="externo"; document.querySelectorAll("[data-o]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.o==="externo")); draw(); });
   $("#invQ").oninput=e=>{S.invQ=e.target.value; draw();};
+  $("#invCat").onchange=e=>{S.invCat=e.target.value; draw();};
+  document.querySelectorAll("[data-o]").forEach(b=>b.onclick=()=>{ S.invOrigen=b.dataset.o; soloViejos=false; document.querySelectorAll("[data-o]").forEach(x=>x.setAttribute("aria-pressed",x===b)); draw(); });
   draw();
 };
 
@@ -795,7 +860,7 @@ bind.perfil=()=>{
 };
 
 /* ---------- Editor (3-step wizard) ---------- */
-let D=null, timerInt=null, lastAct=0, isDup=false, step=1, catQ="", catCat="", cliQ="";
+let D=null, timerInt=null, lastAct=0, isDup=false, step=1, catQ="", catCat="", catOri="", cliQ="";
 function openEditor(p,dup){
   isDup=!!dup;
   if(!p){ D={id:uid("p"),numero:nextNumero(),fecha:today(),clienteId:"",cliente:null,lineas:[],transporte:0,ivaModo:"incluido",notas:"",estado:"borrador",validezDias:E().validezDias,tiempoSeg:0,nuevo:true}; }
@@ -874,37 +939,47 @@ function stepEquipos(){
   return `<div class="eq-layout">
    <section class="card pad"><div class="card-h"><h2>En esta proforma</h2><span class="muted" id="edCount"></span></div>
      <div id="edLines"></div>
-     <div class="row" style="margin-top:12px"><button class="btn sm" id="edFree">${icon("plus")}Línea que no está en el inventario</button></div></section>
+     <div class="row" style="margin-top:12px"><button class="btn sm" id="edExt">${icon("plus")}Producto de otra tienda</button><button class="btn sm ghost" id="edFree">${icon("plus")}Línea suelta, sin guardar</button></div></section>
    <section class="card pad catalog"><div class="card-h"><h2>Agregar del inventario</h2><button class="btn sm ghost" id="newEq">${icon("plus")}Equipo nuevo</button></div>
-     <div class="search">${icon("search")}<input id="catQ" type="search" placeholder="Cámara, fregadero, mesa…" value="${esc(catQ)}" autocomplete="off" aria-label="Buscar en el inventario"></div>
-     <div class="chips" id="catChips" style="margin-top:10px"></div>
+     <div class="search">${icon("search")}<input id="catQ" type="search" placeholder="Cámara, mesa, televisor, cuchara…" value="${esc(catQ)}" autocomplete="off" aria-label="Buscar en el inventario"></div>
+     <div class="row" style="margin-top:10px;flex-wrap:nowrap"><select id="catSel" aria-label="Categoría" style="flex:1"></select>
+       <select id="catOri" aria-label="Origen" style="flex:1"><option value="">Todo</option><option value="propio">Lo que fabricamos</option><option value="externo">De otras tiendas</option></select></div>
      <div class="cat-list" id="catList"></div></section>
   </div>`;
 }
 function bindEquipos(){
   $("#catQ").oninput=e=>{catQ=e.target.value; drawCatalog();};
-  $("#newEq").onclick=()=>editEquipo(null);
+  $("#newEq").onclick=()=>editEquipo(null,{alGuardar:id=>addFromEq(id)});
+  $("#edExt").onclick=()=>editEquipo(null,{externo:true,alGuardar:id=>addFromEq(id)});
+  $("#catSel").onchange=e=>{catCat=e.target.value; drawCatalog();};
+  $("#catOri").onchange=e=>{catOri=e.target.value; drawCatalog();};
   $("#edFree").onclick=()=>{ D.lineas.push({equipoId:"",nombre:"",descripcion:"",cantidad:1,precio:0}); drawLines(); updateLive(); const ls=document.querySelectorAll(".line input[data-k=nombre]"); ls[ls.length-1].focus(); };
   drawCatalog(); drawLines();
 }
 function drawCatalog(){
   const box=$("#catList"); if(!box) return;
-  $("#catChips").innerHTML=[["","Todos"],...cats().map(c=>[c,c])].map(([k,l])=>`<button data-cc="${esc(k)}" aria-pressed="${catCat===k}">${esc(l)}</button>`).join("");
-  $("#catChips").querySelectorAll("[data-cc]").forEach(b=>b.onclick=()=>{catCat=b.dataset.cc; drawCatalog();});
+  const sel=$("#catSel"); if(sel) sel.innerHTML=`<option value="">Todas las categorías</option>`+cats().map(c=>`<option ${c===catCat?"selected":""}>${esc(c)}</option>`).join("");
+  const ori=$("#catOri"); if(ori) ori.value=catOri;
   const q=catQ.toLowerCase().trim();
-  const m=S.equipos.filter(e=>(!catCat||e.categoria===catCat)&&(!q||(e.nombre+" "+e.categoria+" "+e.descripcion).toLowerCase().includes(q))).sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||""));
+  const m=S.equipos.filter(e=>(!catCat||catDe(e)===catCat)&&matchOrigen(e,catOri)&&matchEq(e,q)).sort(sortEq);
   const inD=id=>D.lineas.filter(l=>l.equipoId===id).length;
-  box.innerHTML=m.length?m.map(e=>{const n=inD(e.id);return `<button class="cat-item" data-add="${esc(e.id)}" aria-label="Agregar ${esc(e.nombre)}">
-     <span class="thumb">${e.foto?`<img src="${esc(e.foto)}" alt="">`:""}</span><span><b>${esc(e.nombre)}</b><small>${esc(e.categoria||"")} · ${money(e.precio)}</small></span>
-     <span class="add">${icon("plus")}</span>${n?`<span class="cnt">${n}</span>`:""}</button>`}).join("")
-    :`<div class="empty">No hay equipos con esa palabra. <button class="link" id="catNew">Agregar al inventario</button></div>`;
+  let last=""; const html=[];
+  m.forEach(e=>{ const c=catDe(e); if(c!==last){ html.push(`<div class="label" style="font-size:12.5px;font-weight:600;color:var(--muted);padding:10px 4px 2px">${esc(c)}</div>`); last=c; }
+    const n=inD(e.id);
+    html.push(`<button class="cat-item" data-add="${esc(e.id)}" aria-label="Agregar ${esc(e.nombre)}">
+     <span class="thumb">${e.foto?`<img src="${esc(e.foto)}" alt="">`:""}</span><span><b>${esc(e.nombre)}</b><small>${money(e.precio)}${esExterno(e)?` · ${esc(tiendaDe(e))}`:""}${precioViejo(e)?` · <span style="color:var(--warn)">revisar precio</span>`:""}</small></span>
+     <span class="add">${icon("plus")}</span>${n?`<span class="cnt">${n}</span>`:""}</button>`); });
+  box.innerHTML=m.length?html.join(""):`<div class="empty">No hay nada con esa búsqueda. <button class="link" id="catNew">Agregar producto de otra tienda</button></div>`;
   box.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>addFromEq(b.dataset.add));
-  const cn=$("#catNew"); cn&&(cn.onclick=()=>editEquipo(null));
+  const cn=$("#catNew"); cn&&(cn.onclick=()=>editEquipo(null,{externo:true,alGuardar:id=>addFromEq(id)}));
 }
 function addFromEq(id){ const e=S.equipos.find(x=>x.id===id); if(!e) return;
-  D.lineas.push({equipoId:e.id,nombre:e.nombre,descripcion:e.descripcion,cantidad:1,precio:+e.precio||0}); drawLines(); drawCatalog(); updateLive(); toast(`${e.nombre} agregado`); }
+  D.lineas.push({equipoId:e.id,nombre:e.nombre,descripcion:e.descripcion,cantidad:1,precio:+e.precio||0}); drawLines(); drawCatalog(); updateLive();
+  toast(precioViejo(e)?`Agregado. Ojo: el precio de ${tiendaDe(e)} se revisó hace ${diasDesde(e.precioRevisado)} días.`:`${e.nombre} agregado`); }
 function priceHint(l){ const eq=l.equipoId&&S.equipos.find(e=>e.id===l.equipoId);
-  if(!eq) return "Línea que no está en el inventario";
+  if(!eq) return "Línea suelta, no está en el inventario";
+  if(esExterno(eq)){ const base=`De ${esc(tiendaDe(eq))}: costo ${money(eq.costo)} + ${esc(eq.ganancia)} %${precioViejo(eq)?` · <span style="color:var(--warn);font-weight:600">precio de hace ${diasDesde(eq.precioRevisado)} días</span>`:""}`;
+    return +eq.precio!==+l.precio?`${base} · inventario: ${money(eq.precio)} <button type="button" data-use>usar</button>`:base; }
   return +eq.precio!==+l.precio?`Inventario: ${money(eq.precio)} · <button type="button" data-use>usar ese precio</button> · <button type="button" data-upd>guardar este en el inventario</button>`:"Mismo precio del inventario"; }
 function drawLines(){
   const box=$("#edLines"); if(!box) return;
